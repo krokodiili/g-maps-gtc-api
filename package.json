@@ -38,6 +38,7 @@
     "prettier": "^1.13.7"
   },
   "dependencies": {
+    "@google/maps": "^0.5.3",
     "express": "^4.16.3",
     "socket.io": "^2.1.1"
   }
