@@ -8,22 +8,39 @@ const googleMaps = require('@google/maps').createClient({
 const collection = require('./cities')
 
 const makeGoogleMapsFetch = async () => {
-	const randomlySelectedCity = collection[Math.floor((Math.random() * collection.length) + 1)]
+	const randomlySelectedCity = collection[Math.floor((Math.random() * collection.length))]
+	const randomizePositions = (lat, lon) => {
+		const r = 100 / 111300 // = 100 meters
+		const y0 = lat
+		const x0 = lon
+		const u = Math.random()
+		const v = Math.random()
+		const w = r * Math.sqrt(u)
+		const t = 2 * Math.PI * v
+		const x = w * Math.cos(t)
+		const y1 = w * Math.sin(t)
+		const x1 = x / Math.cos(y0)
+		const newLat = y0 + y1
+		const newLon = x0 + x1
+		return { lat: newLat, lng: newLon }
+	}
 	return googleMaps.geocode({ address: randomlySelectedCity })
 		.asPromise()
 		.then(response => response.json.results)
 		.then(data => data[0])
 		.then(data => ({
 			city: randomlySelectedCity,
-			location: data.geometry.location,
+			location: randomizePositions(
+				data.geometry.location.lat,
+				data.geometry.location.lng,
+			),
 		}))
 		.catch(err => {
 			console.log(err)
 		})
 }
 const generateRandomCities = async () => {
-	let results = []
-	Promise.all([
+	const results = Promise.all([
 		makeGoogleMapsFetch(),
 		makeGoogleMapsFetch(),
 		makeGoogleMapsFetch(),
@@ -31,11 +48,14 @@ const generateRandomCities = async () => {
 		makeGoogleMapsFetch(),
 	])
 		.then(response => (
-			response.map(res => res)))
-		.then(values => {
-			results = values
-			console.log(results)
-		})
+			response.map(res => {
+				if (res !== undefined) {
+					return res
+				}
+			})))
+		.then(values => values)
+		.catch(err => { console.log(err) })
+	return results
 }
 
 const generateUUID = () => {
@@ -69,13 +89,14 @@ const findUserObjectById = id => userList.find(obj => obj.id === id)
 
 io.on('connection', client => {
 	const startNewGame = () => {
-		// TODO initial City locations
-		const sendGameLocations = generateRandomCities()
-		io.in(currentLobby.id).emit('start', sendGameLocations)
-		console.log(userList)
-		currentLobby = newLobby()
-		onGoingGames.push(newGame(usersInLobby))
-		usersInLobby = []
+		const sendGamePositions = generateRandomCities()
+			.then(data => {
+				io.in(currentLobby.id).emit('start', data)
+				currentLobby = newLobby()
+				onGoingGames.push(newGame(usersInLobby))
+				usersInLobby = []
+			})
+			.catch(err => console.log(err))
 	}
 	const finishGame = () => {
 
@@ -89,22 +110,43 @@ io.on('connection', client => {
 	const handleConnect = data => {
 		const user = newUser(client, data, currentLobby.id)
 		userList.push(user)
+		usersInLobby.push(user)
+		io.to(currentLobby.id).emit('updateUsers', usersInLobby)
+		// console.log('user joined', client.id)
 	}
 	const cleanUpAfterDC = () => {
+		// console.log('user left: ', client.id)
 		const result = findUserObjectById(client.id)
+		console.log('results was: ', result, 'and client read id: ', client.id)
 		const index = userList.indexOf(result)
-		userList.splice(index, 1)
+		if (index !== -1) {
+			userList.splice(index, 1)
+		} else {
+			(
+				console.log('didnt remove', client.id, ' ID wasnt found in userList')
+			)
+		}
+		const idx = usersInLobby.indexOf(result)
+		if (idx !== -1) {
+			usersInLobby.splice(idx, 1)
+		} else {
+			console.log('didnt remove ', client.id, 'ID wasnt found in usersInLobby')
+		}
+		io.to(currentLobby.id).emit('updateUsers', usersInLobby)
 	}
-	const rewardUserForAnswer = user => {
-
+	const rewardUserForAnswer = data => {
+		const user = findUserObjectById(client.id)
+		user.score = data + 1
+		console.log(user)
+		client.to(user.gameId).emit('userScored', user)
+		io.to(user.gameId).emit('userScored', user)
 	}
-
 	client.join(currentLobby.id)
-	client.on('initial', handleConnect)
 	client.on('finish', finishGame)
 	client.on('start', startNewGame)
 	client.on('correct', rewardUserForAnswer)
 	client.on('update', updateUser)
 	client.on('disconnect', cleanUpAfterDC)
+	client.on('initial', handleConnect)
 })
 server.listen(HTTP_PORT)
