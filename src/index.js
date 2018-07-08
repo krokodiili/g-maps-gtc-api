@@ -9,31 +9,13 @@ const collection = require('./cities')
 
 const makeGoogleMapsFetch = async () => {
 	const randomlySelectedCity = collection[Math.floor((Math.random() * collection.length))]
-	const randomizePositions = (lat, lon) => {
-		const r = 100 / 111300 // = 100 meters
-		const y0 = lat
-		const x0 = lon
-		const u = Math.random()
-		const v = Math.random()
-		const w = r * Math.sqrt(u)
-		const t = 2 * Math.PI * v
-		const x = w * Math.cos(t)
-		const y1 = w * Math.sin(t)
-		const x1 = x / Math.cos(y0)
-		const newLat = y0 + y1
-		const newLon = x0 + x1
-		return { lat: newLat, lng: newLon }
-	}
 	return googleMaps.geocode({ address: randomlySelectedCity })
 		.asPromise()
 		.then(response => response.json.results)
 		.then(data => data[0])
 		.then(data => ({
 			city: randomlySelectedCity,
-			location: randomizePositions(
-				data.geometry.location.lat,
-				data.geometry.location.lng,
-			),
+			location: data.geometry.location,
 		}))
 		.catch(err => {
 			console.log(err)
@@ -134,12 +116,11 @@ io.on('connection', client => {
 		}
 		io.to(currentLobby.id).emit('updateUsers', usersInLobby)
 	}
-	const rewardUserForAnswer = data => {
+	const rewardUserForAnswer = () => {
 		const user = findUserObjectById(client.id)
-		user.score = data + 1
-		console.log(user)
-		client.to(user.gameId).emit('userScored', user)
-		io.to(user.gameId).emit('userScored', user)
+		user.score += 1
+		const arrayOfGamers = getUsersInGame(user.inGameId)
+		io.to(user.inGameId).emit('userScored', arrayOfGamers)
 	}
 	client.join(currentLobby.id)
 	client.on('finish', finishGame)
