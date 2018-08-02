@@ -1,8 +1,9 @@
 const HTTP_PORT = 18399
+const apiKey = ''
 const server = require('http').createServer()
 const io = require('socket.io')(server)
 const googleMaps = require('@google/maps').createClient({
-	key: 'AIzaSyAqcPrwNOpMl4IZL64QjfnBdPoE5dcZ28w',
+	key: apiKey,
 	Promise,
 })
 const collection = require('./cities')
